@@ -207,7 +207,7 @@
       // contents keyed by dropdown value ("__project__" for the project file, or
       // a notebook name). One unified picker for project + all notebooks.
       const contents = {};
-      const hasProject = !!(STATE && STATE.projectName != null);
+      const hasProject = !!(STATE && STATE.projectSetName != null);
       if (hasProject) contents["__project__"] = STATE.projectContent || "";
       if (STATE && STATE.notebookContents) for (const k in STATE.notebookContents) contents[k] = STATE.notebookContents[k];
 
@@ -215,7 +215,7 @@
       if (!(current in contents)) contents[current] = "";
       pad.value = contents[current] || "";
 
-      if (hasProject) nbSelect.appendChild(new Option("📁 " + STATE.projectName, "__project__"));
+      if (hasProject) nbSelect.appendChild(new Option("📁 " + STATE.projectSetName, "__project__"));
       for (const name of (STATE && STATE.notebooks ? STATE.notebooks : [])) nbSelect.appendChild(new Option(name, name));
       renameOpt = new Option("✎ Rename this note…", "__rename__");
       nbSelect.appendChild(renameOpt);
@@ -223,7 +223,7 @@
       nbSelect.value = current;
 
       const targetFor = (v) => v === "__project__" ? { type: "project" } : { type: "notebook", name: v };
-      const folderFor = (v) => (v === "__project__" ? (STATE.projectDir || "") : (STATE.notebooksDir || ""));
+      const folderFor = (v) => (v === "__project__" ? (STATE.projectNotesDir || "") : (STATE.notebooksDir || ""));
       let target = targetFor(current);
       nbSelect.dataset.tip = folderFor(current);
 
@@ -460,7 +460,7 @@
       const pathtext = document.getElementById("pathtext");
       function sanitizeName(n) { return (n.replace(/[\/\\:*?"<>|]/g, "_").trim() || "Untitled"); }
       function currentFilePath() {
-        if (target.type === "project") return STATE.projectDir ? STATE.projectDir + "/Lyrics.md" : "";
+        if (target.type === "project") return STATE.projectNotePath || "";
         return STATE.notebooksDir ? STATE.notebooksDir + "/" + sanitizeName(current) + ".md" : "";
       }
       function refreshPath() { if (!pathbar.hidden) pathtext.textContent = currentFilePath() || "(location unavailable)"; }

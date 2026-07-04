@@ -119,7 +119,36 @@ export function activate(activation: ActivationContext) {
     }
     return null;
   };
-  const projectFile = (root: string) => path.join(root, "Session Notes.md");
+  const listAlsInRoot = (root: string): string[] => {
+    try {
+      return fs
+        .readdirSync(root)
+        .filter((f) => f.toLowerCase().endsWith(".als"));
+    } catch {
+      return [];
+    }
+  };
+  const resolveSetBasename = (root: string): string | null => {
+    const als = listAlsInRoot(root);
+    if (!als.length) return null;
+    const folder = path.basename(root);
+    const match = als.find((f) => path.basename(f, ".als") === folder);
+    if (match) return path.basename(match, ".als");
+    if (als.length === 1) {
+      const only = als[0];
+      if (only) return path.basename(only, ".als");
+    }
+    return null;
+  };
+  const legacyProjectFile = (root: string) => path.join(root, "Session Notes.md");
+  const projectNotePath = (root: string, setName: string) =>
+    path.join(root, "Notes", sanitize(setName) + ".md");
+  const readProjectContent = (root: string, setName: string): string => {
+    const notePath = projectNotePath(root, setName);
+    const content = readFile(notePath);
+    if (content) return content;
+    return readFile(legacyProjectFile(root)) || DEFAULT_MD;
+  };
 
   // ---- command ------------------------------------------------------------
   type Payload = {
@@ -137,30 +166,35 @@ export function activate(activation: ActivationContext) {
       listNotebooks().map((n) => [n, readFile(notebookPath(n))]),
     );
 
-    let projectName: string | null = null;
-    let projectDir: string | null = null;
+    let projectSetName: string | null = null;
+    let projectNoteFile: string | null = null;
+    let projectNotesDir: string | null = null;
     let projectContent = "";
-    if (root) {
-      projectName = path.basename(root);
-      projectDir = root;
-      projectContent = readFile(projectFile(root)) || DEFAULT_MD;
+    const setName = root ? resolveSetBasename(root) : null;
+    if (root && setName) {
+      projectSetName = setName;
+      projectNoteFile = projectNotePath(root, setName);
+      projectNotesDir = path.join(root, "Notes");
+      projectContent = readProjectContent(root, setName);
     }
 
     // Reopen whatever was open last (project note or a specific notebook),
     // falling back to the project note, then the first notebook.
     let current: string;
     const saved = readState().current || "";
-    if (root && saved === "__project__") current = "__project__";
+    const hasProject = !!(root && setName);
+    if (hasProject && saved === "__project__") current = "__project__";
     else if (saved && saved in notebookContents) current = saved;
-    else if (root) current = "__project__";
+    else if (hasProject) current = "__project__";
     else {
       current = Object.keys(notebookContents)[0] || "Global";
       if (!(current in notebookContents)) notebookContents[current] = DEFAULT_MD;
     }
 
     return {
-      projectName,
-      projectDir,
+      projectSetName,
+      projectNotePath: projectNoteFile,
+      projectNotesDir,
       projectContent,
       notebooksDir,
       notebooks: Object.keys(notebookContents).sort((a, b) => a.localeCompare(b)),
@@ -170,8 +204,14 @@ export function activate(activation: ActivationContext) {
   };
 
   const persist = (payload: Payload, root: string | null) => {
-    if (root && typeof payload.projectText === "string")
-      fs.writeFileSync(projectFile(root), payload.projectText, "utf8");
+    if (root && typeof payload.projectText === "string") {
+      const setName = resolveSetBasename(root);
+      if (setName) {
+        const notePath = projectNotePath(root, setName);
+        fs.mkdirSync(path.dirname(notePath), { recursive: true });
+        fs.writeFileSync(notePath, payload.projectText, "utf8");
+      }
+    }
     // Apply renames before writing so the moved file gets the fresh content and
     // no stale copy is left under the old name.
     if (Array.isArray(payload.renames)) {
